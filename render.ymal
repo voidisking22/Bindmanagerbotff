@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: king-void-bind-manager
+    runtime: python
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python main.py
+    healthCheckPath: /
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: FORCE_CHANNEL
+        value: https://t.me/kingvoidofficials
+      - key: FORCE_GROUP
+        value: https://t.me/kingvoidofficialgc
+      - key: SUPPORT_1
+        value: "@voidisking"
+      - key: SUPPORT_2
+        value: "@lordofzone"
+      - key: PYTHON_VERSION
+        value: "3.11.9"
