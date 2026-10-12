@@ -1,6 +1,4 @@
-import requests, urllib3
-from datetime import datetime
-
+import requests, urllib3, urllib.parse
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 PLATFORM_MAP = {
@@ -27,13 +25,12 @@ def esc(text):
 
 def player_info(access_token):
     url = f"https://api-otrss.garena.com/support/callback/?access_token={access_token}"
-    h = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=h, allow_redirects=True, timeout=15)
-    import urllib.parse as up
-    q = up.parse_qs(up.urlparse(r.url).query)
+    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"},
+                     allow_redirects=True, timeout=15)
+    q = urllib.parse.parse_qs(urllib.parse.urlparse(r.url).query)
     return {
         "uid":      q.get("account_id", ["Unknown"])[0],
-        "nickname": up.unquote(q.get("nickname", ["Unknown"])[0]),
+        "nickname": urllib.parse.unquote(q.get("nickname", ["Unknown"])[0]),
         "region":   q.get("region", ["Unknown"])[0],
         "valid":    "access_token" in q,
     }
@@ -43,6 +40,4 @@ def bind_info(access_token):
     params = {"app_id": "100067", "access_token": access_token}
     h = {"User-Agent": "GarenaMSDK/4.0.19P9(Redmi Note 5 ;Android 9;en;US;)"}
     r = requests.get(url, params=params, headers=h, timeout=15)
-    if r.status_code != 200:
-        return None
-    return r.json()
+    return r.json() if r.status_code == 200 else None
