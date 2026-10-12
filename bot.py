@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════
-#  VOID GARENA BIND MANAGER — single file
+#  VOID GARENA BIND MANAGER — single file + verification
 # ═══════════════════════════════════════════════════════════
 
 import os, logging, urllib.parse
@@ -7,20 +7,25 @@ import requests, urllib3
 
 from telegram import (
     Update, ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton,
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler,
-    filters, ContextTypes,
+    Application, CommandHandler, CallbackQueryHandler,
+    MessageHandler, filters, ContextTypes,
 )
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ── config ────────────────────────────────────────────────
-BOT_TOKEN = os.getenv("BOT_TOKEN", "PUT_YOUR_TOKEN_HERE")
-SUPPORT_1 = os.getenv("SUPPORT_1", "@voidisking")
-SUPPORT_2 = os.getenv("SUPPORT_2", "@lordofzone")
-BRAND     = "ᴛʜᴇ ᴠᴏɪᴅ ɢᴀʀᴇɴᴀ ʙɪɴᴅ ᴍᴀɴᴀɢᴇʀ"
+BOT_TOKEN     = os.getenv("BOT_TOKEN", "PUT_YOUR_TOKEN_HERE")
+FORCE_CHANNEL = os.getenv("FORCE_CHANNEL", "https://t.me/kingvoidofficials")
+FORCE_GROUP   = os.getenv("FORCE_GROUP",   "https://t.me/kingvoidofficialgc")
+CHANNEL_ID    = os.getenv("CHANNEL_ID",    "@kingvoidofficials")
+GROUP_ID      = os.getenv("GROUP_ID",      "@kingvoidofficialgc")
+SUPPORT_1     = os.getenv("SUPPORT_1",     "@voidisking")
+SUPPORT_2     = os.getenv("SUPPORT_2",     "@lordofzone")
+BRAND         = "ᴛʜᴇ ᴠᴏɪᴅ ɢᴀʀᴇɴᴀ ʙɪɴᴅ ᴍᴀɴᴀɢᴇʀ"
 
 PORT   = int(os.getenv("PORT", "8080"))
 PUBLIC = os.getenv("RENDER_EXTERNAL_URL", "")
@@ -48,6 +53,16 @@ def secs(s):
     m, s = divmod(m, 60)
     return f"{d}d {h}h {m}m {s}s"
 
+def is_member(bot, chat_id, user_id):
+    try:
+        m = bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+        ok = m.status in ("member", "administrator", "creator")
+        log.info(f"[verify] chat={chat_id} user={user_id} status={m.status} ok={ok}")
+        return ok
+    except Exception as e:
+        log.warning(f"[verify] chat={chat_id} user={user_id} ERR={e}")
+        return False
+
 def player_info(token):
     url = f"https://api-otrss.garena.com/support/callback/?access_token={token}"
     r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"},
@@ -67,21 +82,62 @@ def bind_info(token):
     r = requests.get(url, params=params, headers=h, timeout=15)
     return r.json() if r.status_code == 200 else None
 
+# ── verify screen ─────────────────────────────────────────
+def join_inline_kb():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚡ ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ", url=FORCE_CHANNEL)],
+        [InlineKeyboardButton("💬 ᴊᴏɪɴ ɢʀᴏᴜᴘ",   url=FORCE_GROUP)],
+        [InlineKeyboardButton("✅ ᴠᴇʀɪꜰʏ",       callback_data="verify_join")],
+    ])
+
+def verify_text(u):
+    return (
+        f"🔐 <b>ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇǫᴜɪʀᴇᴅ</b>\n\n"
+        f"👋 ʜɪ, <b>{esc(u.first_name)}</b>\n"
+        f"😎 ᴜꜱᴇʀ : <b>{esc(u.first_name)}</b>\n"
+        f"👑 ɪᴅ   : <code>{u.id}</code>\n\n"
+        f"ᴛᴏ ᴜꜱᴇ <b>{BRAND}</b>, ᴊᴏɪɴ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ & ɢʀᴏᴜᴘ.\n"
+        f"ᴛʜᴇɴ ᴛᴀᴘ ✅ ᴠᴇʀɪꜰʏ.\n\n"
+        f"📢 ᴄʜᴀɴɴᴇʟ : {FORCE_CHANNEL}\n"
+        f"💬 ɢʀᴏᴜᴘ   : {FORCE_GROUP}"
+    )
+
+async def require_join(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> bool:
+    u = update.effective_user
+    if is_member(ctx.bot, CHANNEL_ID, u.id) and is_member(ctx.bot, GROUP_ID, u.id):
+        return True
+
+    text = verify_text(u)
+    kb = join_inline_kb()
+
+    if update.callback_query:
+        try: await update.callback_query.message.delete()
+        except Exception: pass
+        await ctx.bot.send_message(chat_id=update.effective_chat.id,
+                                   text=text, reply_markup=kb,
+                                   parse_mode=ParseMode.HTML,
+                                   disable_web_page_preview=True)
+    else:
+        await update.message.reply_text(text, reply_markup=kb,
+                                        parse_mode=ParseMode.HTML,
+                                        disable_web_page_preview=True)
+    return False
+
 # ── reply keyboard ────────────────────────────────────────
-BTN_BIND_INFO = "📊 Bind Info"
+BTN_BIND_INFO  = "📊 Bind Info"
 BTN_BIND_EMAIL = "🔗 Bind Email"
-BTN_UNBIND = "🔓 Unbind Email"
-BTN_CHANGE = "🔄 Change Email"
-BTN_CANCEL = "⚠️ Cancel Bind"
-BTN_EAT = "🎁 EAT to Token"
-BTN_REVOKE = "🚫 Revoke Token"
-BTN_UNSUB = "📧 Single Unsub OTP"
-BTN_BIO = "✨ Update Bio"
-BTN_PLATFORM = "🕹 Platform Binds"
-BTN_HISTORY = "📜 Login History"
-BTN_JWT = "🔑 Token → JWT"
-BTN_OWNER = "👑 Owner"
-BTN_HOWTO = "ℹ️ How to Use"
+BTN_UNBIND     = "🔓 Unbind Email"
+BTN_CHANGE     = "🔄 Change Email"
+BTN_CANCEL     = "⚠️ Cancel Bind"
+BTN_EAT        = "🎁 EAT to Token"
+BTN_REVOKE     = "🚫 Revoke Token"
+BTN_UNSUB      = "📧 Single Unsub OTP"
+BTN_BIO        = "✨ Update Bio"
+BTN_PLATFORM   = "🕹 Platform Binds"
+BTN_HISTORY    = "📜 Login History"
+BTN_JWT        = "🔑 Token → JWT"
+BTN_OWNER      = "👑 Owner"
+BTN_HOWTO      = "ℹ️ How to Use"
 
 def reply_kb():
     return ReplyKeyboardMarkup(
@@ -99,7 +155,6 @@ def reply_kb():
         input_field_placeholder="ᴘɪᴄᴋ ᴀɴ ᴏᴘᴛɪᴏɴ...",
     )
 
-# menu label → (action_key, prompt_text)
 MENU_ACTIONS = {
     BTN_BIND_INFO:  ("check",    "ꜱᴇɴᴅ ʏᴏᴜʀ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
     BTN_BIND_EMAIL: ("bind",     "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
@@ -127,11 +182,17 @@ HOWTO_TEXT = (
 
 # ── /start ────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await require_join(update, ctx):
+        return
+    await show_menu(update, ctx)
+
+async def show_menu(update, ctx, from_query=False):
     u = update.effective_user
     text = (
-        f"✨  <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {BRAND}</b>  ✨\n\n"
+        f"👋 ʜɪ, <b>{esc(u.first_name)}</b>  ✨\n\n"
         f"😎 ᴜꜱᴇʀ : <b>{esc(u.first_name)}</b>\n"
-        f"👑 ɪᴅ : <code>{u.id}</code>\n\n"
+        f"👑 ɪᴅ   : <code>{u.id}</code>\n\n"
+        f"✨ <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {BRAND}</b> ✨\n\n"
         f"🚀 <b>ꜰᴇᴀᴛᴜʀᴇꜱ :</b>\n"
         f"• 📊 ᴄʜᴇᴄᴋ ʙɪɴᴅ ɪɴꜰᴏʀᴍᴀᴛɪᴏɴ\n"
         f"• 🔗 ʙɪɴᴅ ᴇᴍᴀɪʟ ᴛᴏ ᴀᴄᴄᴏᴜɴᴛ\n"
@@ -146,31 +207,45 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"📱 ꜱᴜᴘᴘᴏʀᴛ : {SUPPORT_1} ᴏʀ {SUPPORT_2}\n\n"
         f"👇 ᴜꜱᴇ ᴛʜᴇ ᴋᴇʏʙᴏᴀʀᴅ ʙᴇʟᴏᴡ ᴛᴏ ꜱᴛᴀʀᴛ"
     )
-    await update.message.reply_text(
-        text,
-        reply_markup=reply_kb(),
-        parse_mode=ParseMode.HTML,
-    )
+    kb = reply_kb()
+    if from_query:
+        await ctx.bot.send_message(chat_id=update.effective_chat.id,
+                                   text=text, reply_markup=kb,
+                                   parse_mode=ParseMode.HTML)
+    else:
+        await update.message.reply_text(text, reply_markup=kb,
+                                        parse_mode=ParseMode.HTML)
+
+async def cb_verify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    u = q.from_user
+    ok = is_member(ctx.bot, CHANNEL_ID, u.id) and is_member(ctx.bot, GROUP_ID, u.id)
+    if ok:
+        await q.answer("✅ ᴠᴇʀɪꜰɪᴇᴅ!", show_alert=False)
+        try: await q.message.delete()
+        except Exception: pass
+        await show_menu(update, ctx, from_query=True)
+    else:
+        await q.answer("❌ ᴊᴏɪɴ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ꜰɪʀꜱᴛ!", show_alert=True)
 
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["pending"] = None
-    await update.message.reply_text(
-        "✅ ᴄᴀɴᴄᴇʟʟᴇᴅ.",
-        reply_markup=reply_kb(),
-    )
+    await update.message.reply_text("✅ ᴄᴀɴᴄᴇʟʟᴇᴅ.", reply_markup=reply_kb())
 
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        HOWTO_TEXT,
-        reply_markup=reply_kb(),
-        parse_mode=ParseMode.HTML,
-    )
+    if not await require_join(update, ctx):
+        return
+    await update.message.reply_text(HOWTO_TEXT, reply_markup=reply_kb(),
+                                    parse_mode=ParseMode.HTML)
 
 # ── message router ────────────────────────────────────────
 async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
-    # top-level menu taps
+    # verify gate on every interaction
+    if not await require_join(update, ctx):
+        return
+
     if text == BTN_OWNER:
         await update.message.reply_text(
             f"👑 <b>ᴏᴡɴᴇʀ ᴅᴇᴛᴀɪʟꜱ</b>\n\n"
@@ -186,8 +261,8 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == BTN_HOWTO:
-        await update.message.reply_text(
-            HOWTO_TEXT, reply_markup=reply_kb(), parse_mode=ParseMode.HTML)
+        await update.message.reply_text(HOWTO_TEXT, reply_markup=reply_kb(),
+                                        parse_mode=ParseMode.HTML)
         return
 
     if text in MENU_ACTIONS:
@@ -200,7 +275,6 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # otherwise — treat as token input if a menu action is pending
     action = ctx.user_data.get("pending")
     if not action:
         return
@@ -358,6 +432,7 @@ def main():
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("help",   cmd_help))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
+    app.add_handler(CallbackQueryHandler(cb_verify, pattern="^verify_join$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
 
     if PUBLIC:
