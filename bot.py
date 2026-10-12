@@ -1,11 +1,9 @@
 # ═══════════════════════════════════════════════════════════
-#  KING VOID BIND MANAGER — single-file build
+#  VOID GARENA BIND MANAGER — single-file build
 # ═══════════════════════════════════════════════════════════
 
-import os, sys, json, time, base64, hashlib, urllib.parse
-import logging
+import os, logging, urllib.parse
 import requests, urllib3
-from datetime import datetime
 
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
@@ -36,7 +34,7 @@ logging.basicConfig(
     format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
     level=logging.INFO,
 )
-log = logging.getLogger("kvbm")
+log = logging.getLogger("vgbm")
 
 # ── helpers ───────────────────────────────────────────────
 PLATFORM_MAP = {
@@ -83,58 +81,92 @@ def bind_info(token):
     r = requests.get(url, params=params, headers=h, timeout=15)
     return r.json() if r.status_code == 200 else None
 
+# ── button builder (auto-fallback if style unsupported) ───
+_STYLE_SUPPORTED = True
+
+def btn(text, **kw):
+    """Build InlineKeyboardButton; strip unsupported kwargs gracefully."""
+    global _STYLE_SUPPORTED
+    if _STYLE_SUPPORTED:
+        try:
+            return InlineKeyboardButton(text, **kw)
+        except TypeError:
+            _STYLE_SUPPORTED = False
+    kw.pop("style", None)
+    return InlineKeyboardButton(text, **kw)
+
 # ── keyboards ─────────────────────────────────────────────
 def join_kb():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚡ ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ", url=FORCE_CHANNEL)],
-        [InlineKeyboardButton("💬 ᴊᴏɪɴ ɢʀᴏᴜᴘ",   url=FORCE_GROUP)],
-        [InlineKeyboardButton("✅ ᴠᴇʀɪꜰʏ", callback_data="verify_join")],
+        [btn("⚡ ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ", url=FORCE_CHANNEL)],
+        [btn("💬 ᴊᴏɪɴ ɢʀᴏᴜᴘ",   url=FORCE_GROUP)],
+        [btn("✅ ᴠᴇʀɪꜰʏ", callback_data="verify_join", style="success")],
     ])
 
 def main_kb():
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("📊 ᴄʜᴇᴄᴋ ʙɪɴᴅ",         callback_data="menu_check"),
-            InlineKeyboardButton("🔗 ʙɪɴᴅ ᴇᴍᴀɪʟ",         callback_data="menu_bind"),
+            btn("📊 ʙɪɴᴅ ɪɴꜰᴏ",  callback_data="menu_check", style="primary"),
+            btn("🔗 ʙɪɴᴅ ᴇᴍᴀɪʟ", callback_data="menu_bind",  style="primary"),
         ],
         [
-            InlineKeyboardButton("🔓 ᴜɴʙɪɴᴅ ᴇᴍᴀɪʟ",       callback_data="menu_unbind"),
-            InlineKeyboardButton("🔄 ᴄʜᴀɴɢᴇ ʙɪɴᴅ ᴇᴍᴀɪʟ",  callback_data="menu_change"),
+            btn("🔓 ᴜɴʙɪɴᴅ ᴇᴍᴀɪʟ", callback_data="menu_unbind", style="primary"),
+            btn("🔄 ᴄʜᴀɴɢᴇ ᴇᴍᴀɪʟ", callback_data="menu_change", style="primary"),
         ],
         [
-            InlineKeyboardButton("⚠️ ᴄᴀɴᴄᴇʟ ʀᴇǫᴜᴇꜱᴛ",   callback_data="menu_cancel"),
-            InlineKeyboardButton("🎁 ᴇᴀᴛ → ᴛᴏᴋᴇɴ",       callback_data="menu_eat"),
+            btn("⚠️ ᴄᴀɴᴄᴇʟ ʙɪɴᴅ", callback_data="menu_cancel", style="danger"),
+            btn("🎁 ᴇᴀᴛ → ᴛᴏᴋᴇɴ", callback_data="menu_eat",    style="success"),
         ],
         [
-            InlineKeyboardButton("🚫 ʀᴇᴠᴏᴋᴇ ᴛᴏᴋᴇɴ",      callback_data="menu_revoke"),
-            InlineKeyboardButton("📧 ꜱɪɴɢʟᴇ ᴜɴꜱᴜʙ ᴏᴛᴘ",  callback_data="menu_unsub"),
+            btn("🚫 ʀᴇᴠᴏᴋᴇ ᴛᴏᴋᴇɴ", callback_data="menu_revoke", style="danger"),
+            btn("📧 ꜱɪɴɢʟᴇ ᴜɴꜱᴜʙ", callback_data="menu_unsub", style="primary"),
         ],
         [
-            InlineKeyboardButton("✨ ᴜᴘᴅᴀᴛᴇ ʙɪᴏ",         callback_data="menu_bio"),
-            InlineKeyboardButton("🕹 ᴘʟᴀᴛꜰᴏʀᴍ ʙɪɴᴅꜱ",    callback_data="menu_platform"),
+            btn("✨ ᴜᴘᴅᴀᴛᴇ ʙɪᴏ",  callback_data="menu_bio",      style="primary"),
+            btn("🕹 ᴘʟᴀᴛꜰᴏʀᴍ",    callback_data="menu_platform", style="primary"),
         ],
         [
-            InlineKeyboardButton("📜 ʟᴏɢɪɴ ʜɪꜱᴛᴏʀʏ",    callback_data="menu_history"),
-            InlineKeyboardButton("🔑 ᴛᴏᴋᴇɴ → ᴊᴡᴛ",       callback_data="menu_jwt"),
+            btn("📜 ʜɪꜱᴛᴏʀʏ",     callback_data="menu_history",  style="primary"),
+            btn("🔑 ᴛᴏᴋᴇɴ → ᴊᴡᴛ", callback_data="menu_jwt",      style="primary"),
         ],
         [
-            InlineKeyboardButton("👑 ᴏᴡɴᴇʀ ᴅᴇᴛᴀɪʟꜱ",    callback_data="menu_owner"),
+            btn("👑 ᴏᴡɴᴇʀ",       callback_data="menu_owner",    style="primary"),
         ],
     ])
 
+# ── gate check ────────────────────────────────────────────
+async def require_join(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Returns True if user passed gate. Otherwise sends gate screen."""
+    u = update.effective_user
+    if is_member(ctx.bot, CHANNEL_ID, u.id) and is_member(ctx.bot, GROUP_ID, u.id):
+        return True
+
+    text = (
+        f"🔐 <b>ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇǫᴜɪʀᴇᴅ</b>\n\n"
+        f"😎 ᴜꜱᴇʀ : <b>{esc(u.first_name)}</b>\n"
+        f"👑 ɪᴅ : <code>{u.id}</code>\n\n"
+        f"ᴛᴏ ᴜꜱᴇ <b>{BRAND}</b>, ᴊᴏɪɴ ʙᴏᴛʜ ʙᴇʟᴏᴡ, ᴛʜᴇɴ ᴛᴀᴘ ✅ ᴠᴇʀɪꜰʏ\n\n"
+        f"⚡ ᴄʜᴀɴɴᴇʟ : {FORCE_CHANNEL}\n"
+        f"💬 ɢʀᴏᴜᴘ   : {FORCE_GROUP}"
+    )
+    kb = join_kb()
+
+    if update.callback_query:
+        try: await update.callback_query.message.delete()
+        except Exception: pass
+        await ctx.bot.send_message(chat_id=update.effective_chat.id,
+                                   text=text, reply_markup=kb,
+                                   parse_mode=ParseMode.HTML,
+                                   disable_web_page_preview=True)
+    else:
+        await update.message.reply_text(text, reply_markup=kb,
+                                        parse_mode=ParseMode.HTML,
+                                        disable_web_page_preview=True)
+    return False
+
 # ── /start & verify ───────────────────────────────────────
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    u = update.effective_user
-    if not (is_member(ctx.bot, CHANNEL_ID, u.id) and is_member(ctx.bot, GROUP_ID, u.id)):
-        await update.message.reply_text(
-            f"🔐 <b>ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇǫᴜɪʀᴇᴅ</b>\n\n"
-            f"ʜɪ <b>{esc(u.first_name)}</b> (<code>{u.id}</code>)\n"
-            f"ᴋɪɴᴅʟʏ ᴊᴏɪɴ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ & ɢʀᴏᴜᴘ ᴛᴏ ᴜꜱᴇ ᴛʜɪꜱ ʙᴏᴛ.\n\n"
-            f"ᴀꜰᴛᴇʀ ᴊᴏɪɴɪɴɢ ᴛᴀᴘ ✅ ᴠᴇʀɪꜰʏ",
-            reply_markup=join_kb(),
-            parse_mode=ParseMode.HTML,
-        )
-        return
+    # straight to menu — no gate on /start
     await show_menu(update, ctx)
 
 async def cb_verify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -160,7 +192,7 @@ async def show_menu(update, ctx, from_query=False):
         f"• 🔗 ʙɪɴᴅ ᴇᴍᴀɪʟ ᴛᴏ ᴀᴄᴄᴏᴜɴᴛ\n"
         f"• 🔓 ᴜɴʙɪɴᴅ ᴇᴍᴀɪʟ\n"
         f"• 🔄 ᴄʜᴀɴɢᴇ ʙɪɴᴅ ᴇᴍᴀɪʟ\n"
-        f"• ⚠️ ᴄᴀɴᴄᴇʟ ʙɪɴᴅ ʀᴇQᴜᴇꜱᴛ\n"
+        f"• ⚠️ ᴄᴀɴᴄᴇʟ ʙɪɴᴅ ʀᴇǫᴜᴇꜱᴛ\n"
         f"• 🎁 ᴄᴏɴᴠᴇʀᴛ ᴇᴀᴛ ᴛᴏ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ\n"
         f"• 🚫 ʀᴇᴠᴏᴋᴇ ᴛᴏᴋᴇɴ\n"
         f"• 📧 ꜱᴇɴᴅ ꜱɪɴɢʟᴇ ᴜɴꜱᴜʙꜱᴄʀɪʙᴇ ᴏᴛᴘ\n"
@@ -172,9 +204,11 @@ async def show_menu(update, ctx, from_query=False):
     kb = main_kb()
     if from_query:
         await ctx.bot.send_message(chat_id=update.effective_chat.id,
-                                   text=text, reply_markup=kb, parse_mode=ParseMode.HTML)
+                                   text=text, reply_markup=kb,
+                                   parse_mode=ParseMode.HTML)
     else:
-        await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+        await update.message.reply_text(text, reply_markup=kb,
+                                        parse_mode=ParseMode.HTML)
 
 # ── menu router ───────────────────────────────────────────
 PROMPTS = {
@@ -195,6 +229,11 @@ PROMPTS = {
 async def cb_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+
+    # gate first — no menu action until verified
+    if not await require_join(update, ctx):
+        return
+
     action = q.data
 
     if action == "menu_owner":
@@ -231,6 +270,11 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     action = ctx.user_data.get("pending")
     if not action:
         return
+
+    # gate every real action
+    if not await require_join(update, ctx):
+        return
+
     token = update.message.text.strip()
     ctx.user_data["pending"] = None
 
@@ -357,7 +401,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❓ ᴜɴᴋɴᴏᴡɴ ᴀᴄᴛɪᴏɴ.")
 
     except Exception as e:
-        log.exception("token_input fail")
+        log.exception("on_text fail")
         await update.message.reply_text(f"❌ ᴇʀʀᴏʀ: <code>{esc(e)}</code>",
                                         parse_mode=ParseMode.HTML)
 
@@ -379,7 +423,7 @@ def main():
             allowed_updates=Update.ALL_TYPES,
         )
     else:
-        log.info("🚀 ᴘᴏʟʟɪɴɢ ᴍᴏᴅᴇ (local)")
+        log.info("🚀 ᴘᴏʟʟɪɴɢ ᴍᴏᴅᴇ")
         app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == "__main__":
