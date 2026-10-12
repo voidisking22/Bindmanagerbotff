@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════
-#  VOID GARENA BIND MANAGER — single file, full
+#  VOID GARENA BIND MANAGER — single file, hardcoded config
 # ═══════════════════════════════════════════════════════════
 
 import os, logging, urllib.parse, hashlib
@@ -17,14 +17,16 @@ from telegram.ext import (
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# ── config ────────────────────────────────────────────────
+# ── hardcoded config ──────────────────────────────────────
 BOT_TOKEN     = os.getenv("BOT_TOKEN", "PUT_YOUR_TOKEN_HERE")
-FORCE_CHANNEL = os.getenv("FORCE_CHANNEL", "https://t.me/kingvoidofficials")
-FORCE_GROUP   = os.getenv("FORCE_GROUP",   "https://t.me/kingvoidofficialgc")
-CHANNEL_ID    = os.getenv("CHANNEL_ID",    "@kingvoidofficials")
-GROUP_ID      = os.getenv("GROUP_ID",      "@kingvoidofficialgc")
-SUPPORT_1     = os.getenv("SUPPORT_1",     "@voidisking")
-SUPPORT_2     = os.getenv("SUPPORT_2",     "@lordofzone")
+
+FORCE_CHANNEL = "https://t.me/kingvoidofficial"
+FORCE_GROUP   = "https://t.me/voidofficialgc"
+CHANNEL_ID    = "@kingvoidofficial"
+GROUP_ID      = "@voidofficialgc"
+
+SUPPORT_1     = "@voidisking"
+SUPPORT_2     = "@lordofzone"
 BRAND         = "ᴛʜᴇ ᴠᴏɪᴅ ɢᴀʀᴇɴᴀ ʙɪɴᴅ ᴍᴀɴᴀɢᴇʀ"
 
 PORT   = int(os.getenv("PORT", "8080"))
@@ -214,7 +216,6 @@ HOWTO_TEXT = (
 
 # ── /start ────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    # intro first, no gate
     await show_menu(update, ctx)
 
 async def show_menu(update, ctx, from_query=False):
@@ -482,16 +483,15 @@ async def on_message_wrapper(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         data = ctx.user_data.get("flow_data", {})
         if step == "email":
             data["email"] = text
-            r = requests.post(E_SEND_OTP,
-                              data={"email": text, "locale": "en_PK", "region": "PK",
-                                    "app_id": "100067", "access_token": data["token"]},
-                              headers=garena_headers())
+            requests.post(E_SEND_OTP,
+                          data={"email": text, "locale": "en_PK", "region": "PK",
+                                "app_id": "100067", "access_token": data["token"]},
+                          headers=garena_headers())
             ctx.user_data["flow_data"] = data
             ctx.user_data["flow_step"] = "otp"
             await update.message.reply_text(
                 f"📩 ᴏᴛᴘ ꜱᴇɴᴛ ᴛᴏ <code>{esc(text)}</code>\nꜱᴇɴᴅ ᴛʜᴇ 6-ᴅɪɢɪᴛ ᴄᴏᴅᴇ:",
-                reply_markup=reply_kb(), parse_mode=ParseMode.HTML)
-            return
+                reply_markup=reply_kb(), parse_mode=ParseMode.HTML); return
         if step == "otp":
             data["otp"] = text
             r = requests.post(E_VERIFY_OTP,
@@ -512,8 +512,7 @@ async def on_message_wrapper(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             ctx.user_data["flow_step"] = "sec"
             await update.message.reply_text(
                 "✅ ᴏᴛᴘ ᴠᴇʀɪꜰɪᴇᴅ.\n\n🔐 ꜱᴇᴛ ᴀ 6-ᴅɪɢɪᴛ ꜱᴇᴄᴜʀɪᴛʏ ᴄᴏᴅᴇ:",
-                reply_markup=reply_kb(), parse_mode=ParseMode.HTML)
-            return
+                reply_markup=reply_kb(), parse_mode=ParseMode.HTML); return
         if step == "sec":
             sec = hashlib.sha256(text.encode()).hexdigest()
             r = requests.post(E_CREATE_BIND,
@@ -589,8 +588,7 @@ async def on_message_wrapper(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data["flow_step"] = "new_email"
         await update.message.reply_text(
             "✅ ᴏʟᴅ ᴠᴇʀɪꜰɪᴇᴅ.\n📩 ꜱᴇɴᴅ ɴᴇᴡ ᴇᴍᴀɪʟ:",
-            reply_markup=reply_kb(), parse_mode=ParseMode.HTML)
-        return
+            reply_markup=reply_kb(), parse_mode=ParseMode.HTML); return
 
     if flow == "change" and step == "new_email":
         data = ctx.user_data["flow_data"]; token = data["token"]
@@ -604,8 +602,7 @@ async def on_message_wrapper(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                       headers=garena_headers())
         await update.message.reply_text(
             f"📩 ᴏᴛᴘ ꜱᴇɴᴛ ᴛᴏ <code>{esc(data['new_email'])}</code>\nꜱᴇɴᴅ ᴛʜᴇ ᴄᴏᴅᴇ:",
-            reply_markup=reply_kb(), parse_mode=ParseMode.HTML)
-        return
+            reply_markup=reply_kb(), parse_mode=ParseMode.HTML); return
 
     if flow == "change" and step == "new_otp":
         data = ctx.user_data["flow_data"]; token = data["token"]
@@ -633,7 +630,6 @@ async def on_message_wrapper(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_kb(), parse_mode=ParseMode.HTML)
         ctx.user_data.clear(); return
 
-    # not a flow step — normal path
     await on_message(update, ctx)
 
 # ── flow method pickers (inline) ──────────────────────────
