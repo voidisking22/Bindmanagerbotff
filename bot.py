@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════
-#  VOID GARENA BIND MANAGER — single file, hardcoded config
+#  VOID GARENA BIND MANAGER — single file, no verification
 # ═══════════════════════════════════════════════════════════
 
 import os, logging, urllib.parse, hashlib
@@ -19,11 +19,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ── hardcoded config ──────────────────────────────────────
 BOT_TOKEN     = os.getenv("BOT_TOKEN", "PUT_YOUR_TOKEN_HERE")
-
-FORCE_CHANNEL = "https://t.me/kingvoidofficial"
-FORCE_GROUP   = "https://t.me/voidofficialgc"
-CHANNEL_ID    = "@kingvoidofficial"
-GROUP_ID      = "@voidofficialgc"
 
 SUPPORT_1     = "@voidisking"
 SUPPORT_2     = "@lordofzone"
@@ -70,16 +65,6 @@ def secs(s):
     m, s = divmod(m, 60)
     return f"{d}d {h}h {m}m {s}s"
 
-async def is_member(bot, chat_id, user_id):
-    try:
-        m = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
-        ok = m.status in ("member", "administrator", "creator")
-        log.info(f"[verify] chat={chat_id} user={user_id} status={m.status} ok={ok}")
-        return ok
-    except Exception as e:
-        log.warning(f"[verify] chat={chat_id} user={user_id} ERR={e}")
-        return False
-
 def garena_headers():
     return {"User-Agent": "GarenaMSDK/4.0.30",
             "Content-Type": "application/x-www-form-urlencoded",
@@ -101,45 +86,6 @@ def bind_info(token):
     r = requests.get(E_BIND_INFO, params={"app_id": "100067", "access_token": token},
                      headers={"User-Agent": "GarenaMSDK/4.0.19P9"}, timeout=15)
     return r.json() if r.status_code == 200 else None
-
-# ── verify screen ─────────────────────────────────────────
-def join_inline_kb():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚡ ᴊᴏɪɴ ᴛɢ ᴄʜᴀɴɴᴇʟ", url=FORCE_CHANNEL)],
-        [InlineKeyboardButton("💬 ᴊᴏɪɴ ᴛɢ ɢʀᴏᴜᴘ",   url=FORCE_GROUP)],
-        [InlineKeyboardButton("✅ ᴠᴇʀɪꜰʏ",           callback_data="verify_join")],
-    ])
-
-def verify_text(u):
-    return (
-        f"🔐 <b>ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇǫᴜɪʀᴇᴅ</b>\n\n"
-        f"👋 ʜɪ, <b>{esc(u.first_name)}</b>\n"
-        f"😎 ᴜꜱᴇʀ : <b>{esc(u.first_name)}</b>\n"
-        f"👑 ɪᴅ   : <code>{u.id}</code>\n\n"
-        f"ᴛᴏ ᴜꜱᴇ <b>{BRAND}</b>, ᴊᴏɪɴ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ & ɢʀᴏᴜᴘ.\n"
-        f"ᴛʜᴇɴ ᴛᴀᴘ ✅ ᴠᴇʀɪꜰʏ.\n\n"
-        f"📢 ᴄʜᴀɴɴᴇʟ : {FORCE_CHANNEL}\n"
-        f"💬 ɢʀᴏᴜᴘ   : {FORCE_GROUP}"
-    )
-
-async def require_join(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> bool:
-    u = update.effective_user
-    in_channel = await is_member(ctx.bot, CHANNEL_ID, u.id)
-    in_group   = await is_member(ctx.bot, GROUP_ID,   u.id)
-    if in_channel and in_group:
-        return True
-    text = verify_text(u); kb = join_inline_kb()
-    if update.callback_query:
-        try: await update.callback_query.message.delete()
-        except Exception: pass
-        await ctx.bot.send_message(chat_id=update.effective_chat.id, text=text,
-                                   reply_markup=kb, parse_mode=ParseMode.HTML,
-                                   disable_web_page_preview=True)
-    else:
-        await update.message.reply_text(text, reply_markup=kb,
-                                        parse_mode=ParseMode.HTML,
-                                        disable_web_page_preview=True)
-    return False
 
 # ── keyboard ──────────────────────────────────────────────
 BTN_BIND_INFO   = "📊 Bind Info"
@@ -247,24 +193,11 @@ async def show_menu(update, ctx, from_query=False):
     else:
         await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
-async def cb_verify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; u = q.from_user
-    in_channel = await is_member(ctx.bot, CHANNEL_ID, u.id)
-    in_group   = await is_member(ctx.bot, GROUP_ID,   u.id)
-    if in_channel and in_group:
-        await q.answer("✅ ᴠᴇʀɪꜰɪᴇᴅ!", show_alert=False)
-        try: await q.message.delete()
-        except Exception: pass
-        await show_menu(update, ctx, from_query=True)
-    else:
-        await q.answer("❌ ᴊᴏɪɴ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ꜰɪʀꜱᴛ!", show_alert=True)
-
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data.clear()
     await update.message.reply_text("✅ ᴄᴀɴᴄᴇʟʟᴇᴅ.", reply_markup=reply_kb())
 
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if not await require_join(update, ctx): return
     await update.message.reply_text(HOWTO_TEXT, reply_markup=reply_kb(),
                                     parse_mode=ParseMode.HTML)
 
@@ -325,8 +258,6 @@ async def start_change_flow(update, ctx, token):
 # ── input router ──────────────────────────────────────────
 async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-
-    if not await require_join(update, ctx): return
 
     if text == BTN_OWNER:
         await update.message.reply_text(
@@ -684,7 +615,6 @@ def main():
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("help",   cmd_help))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
-    app.add_handler(CallbackQueryHandler(cb_verify, pattern="^verify_join$"))
     app.add_handler(CallbackQueryHandler(cb_flow,
                     pattern="^(unbind|change)_(otp|sec)$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message_wrapper))
