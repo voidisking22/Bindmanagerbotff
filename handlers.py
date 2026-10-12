@@ -1,23 +1,22 @@
-import json, hashlib, urllib.parse
+import urllib.parse
 import requests
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 from config import *
 from keyboards import main_menu, join_keyboard
-from utils import is_member, player_info, bind_info, convert_seconds, esc
+from utils import is_member, player_info, bind_info, convert_seconds, esc, PLATFORM_MAP
 
 # ── /start ───────────────────────────────────────────────
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     name = esc(u.first_name or "User")
-    uid = u.id
 
-    if not (is_member(ctx.bot, CHANNEL_ID, uid) and is_member(ctx.bot, GROUP_ID, uid)):
+    if not (is_member(ctx.bot, CHANNEL_ID, u.id) and is_member(ctx.bot, GROUP_ID, u.id)):
         await update.message.reply_text(
             f"🔐 <b>ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇǫᴜɪʀᴇᴅ</b>\n\n"
-            f"ʜɪ {name} (<code>{uid}</code>)\n"
+            f"ʜɪ {name} (<code>{u.id}</code>)\n"
             f"ᴋɪɴᴅʟʏ ᴊᴏɪɴ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ & ɢʀᴏᴜᴘ ᴛᴏ ᴜꜱᴇ ᴛʜɪꜱ ʙᴏᴛ.",
             reply_markup=join_keyboard(),
             parse_mode=ParseMode.HTML,
@@ -26,19 +25,18 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await send_main_menu(update, ctx)
 
-
 async def verify_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     u = q.from_user
     if is_member(ctx.bot, CHANNEL_ID, u.id) and is_member(ctx.bot, GROUP_ID, u.id):
-        await q.message.delete()
+        try: await q.message.delete()
+        except Exception: pass
         await send_main_menu(update, ctx, from_query=True)
     else:
         await q.answer("❌ ʏᴏᴜ ꜱᴛɪʟʟ ʜᴀᴠᴇɴ'ᴛ ᴊᴏɪɴᴇᴅ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ!", show_alert=True)
 
-
-async def send_main_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE, from_query=False):
+async def send_main_menu(update, ctx, from_query=False):
     u = update.effective_user
     text = (
         f"👋 ʜɪ <b>{esc(u.first_name)}</b> (<code>{u.id}</code>)\n"
@@ -62,13 +60,11 @@ async def send_main_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE, from_qu
         f"⚠️ ᴀɴʏ ᴘʀᴏʙʟᴇᴍ → ᴍᴇꜱꜱᴀɢᴇ {SUPPORT_1} ᴏʀ {SUPPORT_2}\n\n"
         f"╰━━━「 📱 ʀᴇᴀᴅʏ ᴛᴏ ᴅᴇᴘʟᴏʏ 」━━━╯"
     )
-    kb = main_menu()
     if from_query:
         await ctx.bot.send_message(chat_id=update.effective_chat.id, text=text,
-                                   reply_markup=kb, parse_mode=ParseMode.HTML)
+                                   reply_markup=main_menu(), parse_mode=ParseMode.HTML)
     else:
-        await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
-
+        await update.message.reply_text(text, reply_markup=main_menu(), parse_mode=ParseMode.HTML)
 
 # ── Menu router ──────────────────────────────────────────
 async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -77,17 +73,17 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     action = q.data
 
     prompts = {
-        "menu_check":    ("🔍 ᴄʜᴇᴄᴋ ʙɪɴᴅ",        "ꜱᴇɴᴅ ʏᴏᴜʀ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-        "menu_bind":     ("📧 ʙɪɴᴅ ᴇᴍᴀɪʟ",        "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-        "menu_unbind":   ("🔓 ᴜɴʙɪɴᴅ ᴇᴍᴀɪʟ",      "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-        "menu_change":   ("♻️ ᴄʜᴀɴɢᴇ ʙɪɴᴅ",      "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-        "menu_cancel":   ("🛑 ᴄᴀɴᴄᴇʟ ʀᴇǫᴜᴇꜱᴛ",   "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-        "menu_eat":      ("🎟 ᴇᴀᴛ ᴛᴏᴋᴇɴ",         "ᴘᴀꜱᴛᴇ ᴇᴀᴛ ᴛᴏᴋᴇɴ ᴏʀ ᴇᴀᴛ ᴜʀʟ"),
-        "menu_revoke":   ("🚫 ʀᴇᴠᴏᴋᴇ ᴛᴏᴋᴇɴ",     "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-        "menu_history":  ("📜 ʟᴏɢɪɴ ʜɪꜱᴛᴏʀʏ",    "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-        "menu_platform": ("🕹 ᴘʟᴀᴛꜰᴏʀᴍ ʙɪɴᴅꜱ",   "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-        "menu_jwt":      ("🔑 ᴛᴏᴋᴇɴ → ᴊᴡᴛ",      "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-        "menu_ban":      ("☠️ ᴛᴏᴋᴇɴ → ʙᴀɴ",      "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+        "menu_check":    ("🔍 ᴄʜᴇᴄᴋ ʙɪɴᴅ",       "ꜱᴇɴᴅ ʏᴏᴜʀ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+        "menu_bind":     ("📧 ʙɪɴᴅ ᴇᴍᴀɪʟ",       "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+        "menu_unbind":   ("🔓 ᴜɴʙɪɴᴅ ᴇᴍᴀɪʟ",     "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+        "menu_change":   ("♻️ ᴄʜᴀɴɢᴇ ʙɪɴᴅ",     "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+        "menu_cancel":   ("🛑 ᴄᴀɴᴄᴇʟ ʀᴇǫᴜᴇꜱᴛ",  "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+        "menu_eat":      ("🎟 ᴇᴀᴛ ᴛᴏ ᴛᴏᴋᴇɴ",    "ᴘᴀꜱᴛᴇ ᴇᴀᴛ ᴛᴏᴋᴇɴ ᴏʀ ᴇᴀᴛ ᴜʀʟ"),
+        "menu_revoke":   ("🚫 ʀᴇᴠᴏᴋᴇ ᴛᴏᴋᴇɴ",    "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+        "menu_history":  ("📜 ʟᴏɢɪɴ ʜɪꜱᴛᴏʀʏ",   "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+        "menu_platform": ("🕹 ᴘʟᴀᴛꜰᴏʀᴍ ʙɪɴᴅꜱ",  "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+        "menu_jwt":      ("🔑 ᴛᴏᴋᴇɴ → ᴊᴡᴛ",     "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+        "menu_ban":      ("☠️ ᴛᴏᴋᴇɴ → ʙᴀɴ",     "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
     }
 
     if action == "menu_owner":
@@ -108,13 +104,9 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if action in prompts:
         title, hint = prompts[action]
         ctx.user_data["pending"] = action.replace("menu_", "")
-        await q.message.reply_text(
-            f"{title}\n\n📩 {hint}",
-            parse_mode=ParseMode.HTML,
-        )
+        await q.message.reply_text(f"{title}\n\n📩 {hint}", parse_mode=ParseMode.HTML)
     else:
         await q.message.reply_text("❓ ᴜɴᴋɴᴏᴡɴ ᴀᴄᴛɪᴏɴ.")
-
 
 # ── Token input handler ──────────────────────────────────
 async def token_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -207,7 +199,6 @@ async def token_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             r = requests.get(url, params={"access_token": token},
                              headers={"User-Agent": "GarenaMSDK/4.0.19P9"}, timeout=15)
             d = r.json()
-            from utils import PLATFORM_MAP
             b = "\n".join(f"│ ✅ {PLATFORM_MAP.get(x, x)}" for x in d.get("bounded_accounts", [])) or "│ — ɴᴏɴᴇ"
             a = "\n".join(f"│ ➕ {PLATFORM_MAP.get(x, x)}" for x in d.get("available_platforms", [])) or "│ — ɴᴏɴᴇ"
             await update.message.reply_text(
@@ -223,7 +214,6 @@ async def token_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 f"ᴄᴏɴᴛᴀᴄᴛ {SUPPORT_1} ᴏʀ {SUPPORT_2}",
                 parse_mode=ParseMode.HTML,
             )
-
         else:
             await update.message.reply_text("❓ ᴜɴᴋɴᴏᴡɴ ᴀᴄᴛɪᴏɴ.")
 
