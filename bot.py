@@ -1,30 +1,26 @@
 # ═══════════════════════════════════════════════════════════
-#  VOID GARENA BIND MANAGER — single-file build
+#  VOID GARENA BIND MANAGER — single file
 # ═══════════════════════════════════════════════════════════
 
 import os, logging, urllib.parse
 import requests, urllib3
 
 from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup,
+    Update, ReplyKeyboardMarkup, KeyboardButton,
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters, ContextTypes,
+    Application, CommandHandler, MessageHandler,
+    filters, ContextTypes,
 )
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ── config ────────────────────────────────────────────────
-BOT_TOKEN      = os.getenv("BOT_TOKEN", "PUT_YOUR_TOKEN_HERE")
-FORCE_CHANNEL  = os.getenv("FORCE_CHANNEL", "https://t.me/kingvoidofficials")
-FORCE_GROUP    = os.getenv("FORCE_GROUP",   "https://t.me/kingvoidofficialgc")
-CHANNEL_ID     = os.getenv("CHANNEL_ID",    "@kingvoidofficials")
-GROUP_ID       = os.getenv("GROUP_ID",      "@kingvoidofficialgc")
-SUPPORT_1      = os.getenv("SUPPORT_1",     "@voidisking")
-SUPPORT_2      = os.getenv("SUPPORT_2",     "@lordofzone")
-BRAND          = "ᴛʜᴇ ᴠᴏɪᴅ ɢᴀʀᴇɴᴀ ʙɪɴᴅ ᴍᴀɴᴀɢᴇʀ"
+BOT_TOKEN = os.getenv("BOT_TOKEN", "PUT_YOUR_TOKEN_HERE")
+SUPPORT_1 = os.getenv("SUPPORT_1", "@voidisking")
+SUPPORT_2 = os.getenv("SUPPORT_2", "@lordofzone")
+BRAND     = "ᴛʜᴇ ᴠᴏɪᴅ ɢᴀʀᴇɴᴀ ʙɪɴᴅ ᴍᴀɴᴀɢᴇʀ"
 
 PORT   = int(os.getenv("PORT", "8080"))
 PUBLIC = os.getenv("RENDER_EXTERNAL_URL", "")
@@ -52,16 +48,6 @@ def secs(s):
     m, s = divmod(m, 60)
     return f"{d}d {h}h {m}m {s}s"
 
-def is_member(bot, chat_id, user_id):
-    try:
-        m = bot.get_chat_member(chat_id=chat_id, user_id=user_id)
-        ok = m.status in ("member", "administrator", "creator")
-        log.info(f"[verify] chat={chat_id} user={user_id} status={m.status} ok={ok}")
-        return ok
-    except Exception as e:
-        log.warning(f"[verify] chat={chat_id} user={user_id} ERR={e}")
-        return False
-
 def player_info(token):
     url = f"https://api-otrss.garena.com/support/callback/?access_token={token}"
     r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"},
@@ -81,107 +67,66 @@ def bind_info(token):
     r = requests.get(url, params=params, headers=h, timeout=15)
     return r.json() if r.status_code == 200 else None
 
-# ── button builder (auto-fallback if style unsupported) ───
-_STYLE_SUPPORTED = True
+# ── reply keyboard ────────────────────────────────────────
+BTN_BIND_INFO = "📊 Bind Info"
+BTN_BIND_EMAIL = "🔗 Bind Email"
+BTN_UNBIND = "🔓 Unbind Email"
+BTN_CHANGE = "🔄 Change Email"
+BTN_CANCEL = "⚠️ Cancel Bind"
+BTN_EAT = "🎁 EAT to Token"
+BTN_REVOKE = "🚫 Revoke Token"
+BTN_UNSUB = "📧 Single Unsub OTP"
+BTN_BIO = "✨ Update Bio"
+BTN_PLATFORM = "🕹 Platform Binds"
+BTN_HISTORY = "📜 Login History"
+BTN_JWT = "🔑 Token → JWT"
+BTN_OWNER = "👑 Owner"
+BTN_HOWTO = "ℹ️ How to Use"
 
-def btn(text, **kw):
-    """Build InlineKeyboardButton; strip unsupported kwargs gracefully."""
-    global _STYLE_SUPPORTED
-    if _STYLE_SUPPORTED:
-        try:
-            return InlineKeyboardButton(text, **kw)
-        except TypeError:
-            _STYLE_SUPPORTED = False
-    kw.pop("style", None)
-    return InlineKeyboardButton(text, **kw)
-
-# ── keyboards ─────────────────────────────────────────────
-def join_kb():
-    return InlineKeyboardMarkup([
-        [btn("⚡ ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ", url=FORCE_CHANNEL)],
-        [btn("💬 ᴊᴏɪɴ ɢʀᴏᴜᴘ",   url=FORCE_GROUP)],
-        [btn("✅ ᴠᴇʀɪꜰʏ", callback_data="verify_join", style="success")],
-    ])
-
-def main_kb():
-    return InlineKeyboardMarkup([
+def reply_kb():
+    return ReplyKeyboardMarkup(
         [
-            btn("📊 ʙɪɴᴅ ɪɴꜰᴏ",  callback_data="menu_check", style="primary"),
-            btn("🔗 ʙɪɴᴅ ᴇᴍᴀɪʟ", callback_data="menu_bind",  style="primary"),
+            [KeyboardButton(BTN_BIND_INFO),  KeyboardButton(BTN_BIND_EMAIL)],
+            [KeyboardButton(BTN_UNBIND),     KeyboardButton(BTN_CHANGE)],
+            [KeyboardButton(BTN_CANCEL),     KeyboardButton(BTN_EAT)],
+            [KeyboardButton(BTN_REVOKE),     KeyboardButton(BTN_UNSUB)],
+            [KeyboardButton(BTN_BIO),        KeyboardButton(BTN_PLATFORM)],
+            [KeyboardButton(BTN_HISTORY),    KeyboardButton(BTN_JWT)],
+            [KeyboardButton(BTN_OWNER),      KeyboardButton(BTN_HOWTO)],
         ],
-        [
-            btn("🔓 ᴜɴʙɪɴᴅ ᴇᴍᴀɪʟ", callback_data="menu_unbind", style="primary"),
-            btn("🔄 ᴄʜᴀɴɢᴇ ᴇᴍᴀɪʟ", callback_data="menu_change", style="primary"),
-        ],
-        [
-            btn("⚠️ ᴄᴀɴᴄᴇʟ ʙɪɴᴅ", callback_data="menu_cancel", style="danger"),
-            btn("🎁 ᴇᴀᴛ → ᴛᴏᴋᴇɴ", callback_data="menu_eat",    style="success"),
-        ],
-        [
-            btn("🚫 ʀᴇᴠᴏᴋᴇ ᴛᴏᴋᴇɴ", callback_data="menu_revoke", style="danger"),
-            btn("📧 ꜱɪɴɢʟᴇ ᴜɴꜱᴜʙ", callback_data="menu_unsub", style="primary"),
-        ],
-        [
-            btn("✨ ᴜᴘᴅᴀᴛᴇ ʙɪᴏ",  callback_data="menu_bio",      style="primary"),
-            btn("🕹 ᴘʟᴀᴛꜰᴏʀᴍ",    callback_data="menu_platform", style="primary"),
-        ],
-        [
-            btn("📜 ʜɪꜱᴛᴏʀʏ",     callback_data="menu_history",  style="primary"),
-            btn("🔑 ᴛᴏᴋᴇɴ → ᴊᴡᴛ", callback_data="menu_jwt",      style="primary"),
-        ],
-        [
-            btn("👑 ᴏᴡɴᴇʀ",       callback_data="menu_owner",    style="primary"),
-        ],
-    ])
-
-# ── gate check ────────────────────────────────────────────
-async def require_join(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Returns True if user passed gate. Otherwise sends gate screen."""
-    u = update.effective_user
-    if is_member(ctx.bot, CHANNEL_ID, u.id) and is_member(ctx.bot, GROUP_ID, u.id):
-        return True
-
-    text = (
-        f"🔐 <b>ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇǫᴜɪʀᴇᴅ</b>\n\n"
-        f"😎 ᴜꜱᴇʀ : <b>{esc(u.first_name)}</b>\n"
-        f"👑 ɪᴅ : <code>{u.id}</code>\n\n"
-        f"ᴛᴏ ᴜꜱᴇ <b>{BRAND}</b>, ᴊᴏɪɴ ʙᴏᴛʜ ʙᴇʟᴏᴡ, ᴛʜᴇɴ ᴛᴀᴘ ✅ ᴠᴇʀɪꜰʏ\n\n"
-        f"⚡ ᴄʜᴀɴɴᴇʟ : {FORCE_CHANNEL}\n"
-        f"💬 ɢʀᴏᴜᴘ   : {FORCE_GROUP}"
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="ᴘɪᴄᴋ ᴀɴ ᴏᴘᴛɪᴏɴ...",
     )
-    kb = join_kb()
 
-    if update.callback_query:
-        try: await update.callback_query.message.delete()
-        except Exception: pass
-        await ctx.bot.send_message(chat_id=update.effective_chat.id,
-                                   text=text, reply_markup=kb,
-                                   parse_mode=ParseMode.HTML,
-                                   disable_web_page_preview=True)
-    else:
-        await update.message.reply_text(text, reply_markup=kb,
-                                        parse_mode=ParseMode.HTML,
-                                        disable_web_page_preview=True)
-    return False
+# menu label → (action_key, prompt_text)
+MENU_ACTIONS = {
+    BTN_BIND_INFO:  ("check",    "ꜱᴇɴᴅ ʏᴏᴜʀ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+    BTN_BIND_EMAIL: ("bind",     "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+    BTN_UNBIND:     ("unbind",   "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+    BTN_CHANGE:     ("change",   "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+    BTN_CANCEL:     ("cancel",   "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+    BTN_EAT:        ("eat",      "ᴘᴀꜱᴛᴇ ᴇᴀᴛ ᴛᴏᴋᴇɴ ᴏʀ ᴇᴀᴛ ᴜʀʟ"),
+    BTN_REVOKE:     ("revoke",   "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+    BTN_UNSUB:      ("unsub",    "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+    BTN_BIO:        ("bio",      "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+    BTN_PLATFORM:   ("platform", "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+    BTN_HISTORY:    ("history",  "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+    BTN_JWT:        ("jwt",      "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
+}
 
-# ── /start & verify ───────────────────────────────────────
+HOWTO_TEXT = (
+    "ℹ️ <b>ʜᴏᴡ ᴛᴏ ᴜꜱᴇ</b>\n\n"
+    "1️⃣ ᴛᴀᴘ ᴀɴʏ ᴍᴇɴᴜ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ\n"
+    "2️⃣ ᴘᴀꜱᴛᴇ ʏᴏᴜʀ <b>ɢᴀʀᴇɴᴀ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ</b>\n"
+    "3️⃣ ʙᴏᴛ ʀᴇᴛᴜʀɴꜱ ᴛʜᴇ ʀᴇꜱᴜʟᴛ\n\n"
+    "📱 ꜱᴜᴘᴘᴏʀᴛ :\n"
+    f"• {SUPPORT_1}\n"
+    f"• {SUPPORT_2}"
+)
+
+# ── /start ────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    # straight to menu — no gate on /start
-    await show_menu(update, ctx)
-
-async def cb_verify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    u = q.from_user
-    ok = is_member(ctx.bot, CHANNEL_ID, u.id) and is_member(ctx.bot, GROUP_ID, u.id)
-    if ok:
-        await q.answer("✅ ᴠᴇʀɪꜰɪᴇᴅ!", show_alert=False)
-        try: await q.message.delete()
-        except Exception: pass
-        await show_menu(update, ctx, from_query=True)
-    else:
-        await q.answer("❌ ᴊᴏɪɴ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ꜰɪʀꜱᴛ!", show_alert=True)
-
-async def show_menu(update, ctx, from_query=False):
     u = update.effective_user
     text = (
         f"✨  <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {BRAND}</b>  ✨\n\n"
@@ -199,90 +144,76 @@ async def show_menu(update, ctx, from_query=False):
         f"• ✨ ᴜᴘᴅᴀᴛᴇ ʙɪᴏ ᴘʀᴏꜰɪʟᴇ\n\n"
         f"❤️ <b>ᴘʀᴇᴍɪᴜᴍ & ꜱᴇᴄᴜʀᴇ ᴛᴏᴏʟ</b>\n"
         f"📱 ꜱᴜᴘᴘᴏʀᴛ : {SUPPORT_1} ᴏʀ {SUPPORT_2}\n\n"
-        f"👇 ꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ ꜰʀᴏᴍ ʙᴇʟᴏᴡ:"
+        f"👇 ᴜꜱᴇ ᴛʜᴇ ᴋᴇʏʙᴏᴀʀᴅ ʙᴇʟᴏᴡ ᴛᴏ ꜱᴛᴀʀᴛ"
     )
-    kb = main_kb()
-    if from_query:
-        await ctx.bot.send_message(chat_id=update.effective_chat.id,
-                                   text=text, reply_markup=kb,
-                                   parse_mode=ParseMode.HTML)
-    else:
-        await update.message.reply_text(text, reply_markup=kb,
-                                        parse_mode=ParseMode.HTML)
-
-# ── menu router ───────────────────────────────────────────
-PROMPTS = {
-    "menu_check":    ("📊 ᴄʜᴇᴄᴋ ʙɪɴᴅ",           "ꜱᴇɴᴅ ʏᴏᴜʀ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-    "menu_bind":     ("🔗 ʙɪɴᴅ ᴇᴍᴀɪʟ",           "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-    "menu_unbind":   ("🔓 ᴜɴʙɪɴᴅ ᴇᴍᴀɪʟ",         "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-    "menu_change":   ("🔄 ᴄʜᴀɴɢᴇ ʙɪɴᴅ ᴇᴍᴀɪʟ",    "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-    "menu_cancel":   ("⚠️ ᴄᴀɴᴄᴇʟ ʀᴇǫᴜᴇꜱᴛ",      "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-    "menu_eat":      ("🎁 ᴇᴀᴛ → ᴛᴏᴋᴇɴ",          "ᴘᴀꜱᴛᴇ ᴇᴀᴛ ᴛᴏᴋᴇɴ ᴏʀ ᴇᴀᴛ ᴜʀʟ"),
-    "menu_revoke":   ("🚫 ʀᴇᴠᴏᴋᴇ ᴛᴏᴋᴇɴ",         "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-    "menu_unsub":    ("📧 ꜱɪɴɢʟᴇ ᴜɴꜱᴜʙ ᴏᴛᴘ",    "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-    "menu_bio":      ("✨ ᴜᴘᴅᴀᴛᴇ ʙɪᴏ",            "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-    "menu_platform": ("🕹 ᴘʟᴀᴛꜰᴏʀᴍ ʙɪɴᴅꜱ",       "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-    "menu_history":  ("📜 ʟᴏɢɪɴ ʜɪꜱᴛᴏʀʏ",        "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-    "menu_jwt":      ("🔑 ᴛᴏᴋᴇɴ → ᴊᴡᴛ",           "ꜱᴇɴᴅ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ"),
-}
-
-async def cb_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-
-    # gate first — no menu action until verified
-    if not await require_join(update, ctx):
-        return
-
-    action = q.data
-
-    if action == "menu_owner":
-        await q.message.reply_text(
-            f"👑 <b>ᴏᴡɴᴇʀ ᴅᴇᴛᴀɪʟꜱ</b>\n\n"
-            f"╭──────────────\n"
-            f"│ ᴅᴇᴠ  : ᴠᴏɪᴅ ɪꜱ ᴋɪɴɢ\n"
-            f"│ ᴛɢ   : {SUPPORT_1}\n"
-            f"│ ᴛɢ   : {SUPPORT_2}\n"
-            f"│ ᴄʜᴀɴ : {FORCE_CHANNEL}\n"
-            f"│ ɢʀᴘ  : {FORCE_GROUP}\n"
-            f"╰──────────────\n\n"
-            f"ᴛʜᴀɴᴋꜱ ꜰᴏʀ ᴜꜱɪɴɢ <b>{BRAND}</b> 🤍",
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    if action in PROMPTS:
-        title, hint = PROMPTS[action]
-        ctx.user_data["pending"] = action.replace("menu_", "")
-        await q.message.reply_text(
-            f"{title}\n\n📩 {hint}\n\n<i>ᴄᴀɴᴄᴇʟ : /cancel</i>",
-            parse_mode=ParseMode.HTML,
-        )
-    else:
-        await q.message.reply_text("❓ ᴜɴᴋɴᴏᴡɴ ᴀᴄᴛɪᴏɴ.")
+    await update.message.reply_text(
+        text,
+        reply_markup=reply_kb(),
+        parse_mode=ParseMode.HTML,
+    )
 
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["pending"] = None
-    await update.message.reply_text("✅ ᴄᴀɴᴄᴇʟʟᴇᴅ.")
+    await update.message.reply_text(
+        "✅ ᴄᴀɴᴄᴇʟʟᴇᴅ.",
+        reply_markup=reply_kb(),
+    )
 
-# ── token input dispatcher ────────────────────────────────
-async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        HOWTO_TEXT,
+        reply_markup=reply_kb(),
+        parse_mode=ParseMode.HTML,
+    )
+
+# ── message router ────────────────────────────────────────
+async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+
+    # top-level menu taps
+    if text == BTN_OWNER:
+        await update.message.reply_text(
+            f"👑 <b>ᴏᴡɴᴇʀ ᴅᴇᴛᴀɪʟꜱ</b>\n\n"
+            f"╭──────────────\n"
+            f"│ ᴅᴇᴠ : ᴠᴏɪᴅ ɪꜱ ᴋɪɴɢ\n"
+            f"│ ᴛɢ  : {SUPPORT_1}\n"
+            f"│ ᴛɢ  : {SUPPORT_2}\n"
+            f"╰──────────────\n\n"
+            f"ᴛʜᴀɴᴋꜱ ꜰᴏʀ ᴜꜱɪɴɢ <b>{BRAND}</b> 🤍",
+            reply_markup=reply_kb(),
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    if text == BTN_HOWTO:
+        await update.message.reply_text(
+            HOWTO_TEXT, reply_markup=reply_kb(), parse_mode=ParseMode.HTML)
+        return
+
+    if text in MENU_ACTIONS:
+        action, hint = MENU_ACTIONS[text]
+        ctx.user_data["pending"] = action
+        await update.message.reply_text(
+            f"📩 {hint}\n\n<i>ᴄᴀɴᴄᴇʟ : /cancel</i>",
+            reply_markup=reply_kb(),
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    # otherwise — treat as token input if a menu action is pending
     action = ctx.user_data.get("pending")
     if not action:
         return
 
-    # gate every real action
-    if not await require_join(update, ctx):
-        return
-
-    token = update.message.text.strip()
+    token = text
     ctx.user_data["pending"] = None
 
     try:
         if action == "check":
             info = player_info(token)
             if not info["valid"]:
-                await update.message.reply_text("❌ ɪɴᴠᴀʟɪᴅ ᴏʀ ᴇxᴘɪʀᴇᴅ ᴛᴏᴋᴇɴ.")
+                await update.message.reply_text("❌ ɪɴᴠᴀʟɪᴅ ᴏʀ ᴇxᴘɪʀᴇᴅ ᴛᴏᴋᴇɴ.",
+                                                reply_markup=reply_kb())
                 return
             b = bind_info(token) or {}
             email = b.get("email") or "None"
@@ -298,6 +229,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 f"│ ⏳ ᴘᴇɴᴅ : {esc(pend)}\n"
                 f"│ ⏱ ᴄᴅ   : {cd}\n"
                 f"╰──────────────",
+                reply_markup=reply_kb(),
                 parse_mode=ParseMode.HTML,
             )
 
@@ -307,14 +239,16 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 q = urllib.parse.parse_qs(urllib.parse.urlparse(token).query)
                 eat = q.get("eat", [""])[0]
             if not eat:
-                await update.message.reply_text("❌ ɴᴏ ᴇᴀᴛ ᴛᴏᴋᴇɴ ꜰᴏᴜɴᴅ.")
+                await update.message.reply_text("❌ ɴᴏ ᴇᴀᴛ ᴛᴏᴋᴇɴ ꜰᴏᴜɴᴅ.",
+                                                reply_markup=reply_kb())
                 return
             url = f"https://api-otrss.garena.com/support/callback/?access_token={eat}"
             r = requests.get(url, allow_redirects=True, timeout=15)
             q = urllib.parse.parse_qs(urllib.parse.urlparse(r.url).query)
             at = q.get("access_token", [""])[0]
             if not at:
-                await update.message.reply_text("❌ ᴄᴏᴜʟᴅ ɴᴏᴛ ɢᴇɴᴇʀᴀᴛᴇ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ.")
+                await update.message.reply_text("❌ ᴄᴏᴜʟᴅ ɴᴏᴛ ɢᴇɴᴇʀᴀᴛᴇ ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ.",
+                                                reply_markup=reply_kb())
                 return
             await update.message.reply_text(
                 f"🎁 <b>ᴀᴄᴄᴇꜱꜱ ᴛᴏᴋᴇɴ</b>\n\n"
@@ -324,13 +258,15 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 f"│ 🌍 ʀɢɴ  : {esc(q.get('region',['?'])[0])}\n"
                 f"╰──────────────\n\n"
                 f"🔑 <code>{esc(at)}</code>",
+                reply_markup=reply_kb(),
                 parse_mode=ParseMode.HTML,
             )
 
         elif action == "revoke":
             info = player_info(token)
             if not info["valid"]:
-                await update.message.reply_text("❌ ᴛᴏᴋᴇɴ ᴀʟʀᴇᴀᴅʏ ɪɴᴠᴀʟɪᴅ/ʀᴇᴠᴏᴋᴇᴅ.")
+                await update.message.reply_text("❌ ᴛᴏᴋᴇɴ ᴀʟʀᴇᴀᴅʏ ɪɴᴠᴀʟɪᴅ/ʀᴇᴠᴏᴋᴇᴅ.",
+                                                reply_markup=reply_kb())
                 return
             rt = "1380dcb63ab3a077dc05bdf0b25ba4497c403a5b4eae96d7203010eafa6c83a8"
             url = f"https://100067.connect.garena.com/oauth/logout?access_token={token}&refresh_token={rt}"
@@ -339,6 +275,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 f"{'✅' if ok else '❌'} ʀᴇᴠᴏᴋᴇ {'ꜱᴜᴄᴄᴇꜱꜱ' if ok else 'ꜰᴀɪʟᴇᴅ'}\n\n"
                 f"🎮 {esc(info['nickname'])}\n🆔 <code>{esc(info['uid'])}</code>",
+                reply_markup=reply_kb(),
                 parse_mode=ParseMode.HTML,
             )
 
@@ -350,17 +287,20 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                               headers={"User-Agent": "GarenaMSDK/4.0.30"})
             await update.message.reply_text(
                 f"📧 <b>ᴜɴꜱᴜʙ ᴏᴛᴘ</b>\n\n<code>{esc(r.text[:1500])}</code>",
+                reply_markup=reply_kb(),
                 parse_mode=ParseMode.HTML)
 
         elif action == "bio":
             await update.message.reply_text(
                 f"✨ ᴜᴘᴅᴀᴛᴇ ʙɪᴏ ɪꜱ ᴄᴏᴍɪɴɢ ꜱᴏᴏɴ.\nᴘɪɴɢ {SUPPORT_1} ᴏʀ {SUPPORT_2}.",
+                reply_markup=reply_kb(),
                 parse_mode=ParseMode.HTML)
 
         elif action == "jwt":
             r = requests.get(f"https://acesstojwt-sigma.vercel.app/token?access_token={token}", timeout=15)
             await update.message.reply_text(
                 f"🔑 <b>ᴊᴡᴛ ᴛᴏᴋᴇɴ</b>\n\n<code>{esc(r.text[:3500])}</code>",
+                reply_markup=reply_kb(),
                 parse_mode=ParseMode.HTML,
             )
 
@@ -375,6 +315,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 f"🕹 <b>ᴘʟᴀᴛꜰᴏʀᴍ ʙɪɴᴅꜱ</b>\n\n"
                 f"╭─ ʙᴏᴜɴᴅ\n{b}\n╰──────────────\n\n"
                 f"╭─ ᴀᴠᴀɪʟᴀʙʟᴇ\n{a}\n╰──────────────",
+                reply_markup=reply_kb(),
                 parse_mode=ParseMode.HTML,
             )
 
@@ -388,6 +329,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 f"{'✅' if ok else '❌'} ᴄᴀɴᴄᴇʟ {'ᴏᴋ' if ok else 'ꜰᴀɪʟᴇᴅ'}\n\n"
                 f"<code>{esc(r.text[:1200])}</code>",
+                reply_markup=reply_kb(),
                 parse_mode=ParseMode.HTML,
             )
 
@@ -395,24 +337,28 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 f"⚠️ <b>{action.upper()}</b> ɪꜱ ᴜɴᴅᴇʀ ᴄᴏɴꜱᴛʀᴜᴄᴛɪᴏɴ.\n"
                 f"ᴄᴏɴᴛᴀᴄᴛ {SUPPORT_1} ᴏʀ {SUPPORT_2}",
+                reply_markup=reply_kb(),
                 parse_mode=ParseMode.HTML,
             )
         else:
-            await update.message.reply_text("❓ ᴜɴᴋɴᴏᴡɴ ᴀᴄᴛɪᴏɴ.")
+            await update.message.reply_text("❓ ᴜɴᴋɴᴏᴡɴ ᴀᴄᴛɪᴏɴ.",
+                                            reply_markup=reply_kb())
 
     except Exception as e:
-        log.exception("on_text fail")
-        await update.message.reply_text(f"❌ ᴇʀʀᴏʀ: <code>{esc(e)}</code>",
-                                        parse_mode=ParseMode.HTML)
+        log.exception("on_message fail")
+        await update.message.reply_text(
+            f"❌ ᴇʀʀᴏʀ: <code>{esc(e)}</code>",
+            reply_markup=reply_kb(),
+            parse_mode=ParseMode.HTML,
+        )
 
 # ── boot ──────────────────────────────────────────────────
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start",  cmd_start))
+    app.add_handler(CommandHandler("help",   cmd_help))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
-    app.add_handler(CallbackQueryHandler(cb_verify, pattern="^verify_join$"))
-    app.add_handler(CallbackQueryHandler(cb_menu,   pattern="^menu_"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
 
     if PUBLIC:
         log.info(f"🚀 ᴡᴇʙʜᴏᴏᴋ ᴏɴ :{PORT}/{PATH}")
